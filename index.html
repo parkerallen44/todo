@@ -27,14 +27,40 @@
 
   body {
     background: var(--paper);
-    /* faint paper grain */
     background-image:
       radial-gradient(circle at 20% 30%, rgba(0,0,0,0.015) 0, transparent 40%),
       radial-gradient(circle at 80% 70%, rgba(0,0,0,0.02) 0, transparent 45%);
     color: var(--ink);
     font-family: 'Caveat', 'Bradley Hand', cursive;
-    padding: calc(env(safe-area-inset-top) + 18px) 22px calc(env(safe-area-inset-bottom) + 90px) 22px;
+    padding: calc(env(safe-area-inset-top) + 14px) 22px calc(env(safe-area-inset-bottom) + 90px) 22px;
     overscroll-behavior-y: contain;
+  }
+
+  /* notebook tabs */
+  #tabs {
+    display: flex;
+    gap: 6px;
+    margin-bottom: 0;
+  }
+
+  .tab {
+    border: none;
+    background: transparent;
+    font-family: inherit;
+    font-size: 22px;
+    color: var(--dot);
+    padding: 6px 16px 4px;
+    border-radius: 10px 10px 0 0;
+    border: 1px solid transparent;
+    border-bottom: none;
+    cursor: pointer;
+  }
+
+  .tab.active {
+    color: var(--ink);
+    background: rgba(255,255,255,0.45);
+    border-color: var(--line);
+    font-weight: 600;
   }
 
   header {
@@ -88,7 +114,6 @@
     background: transparent;
     cursor: pointer;
     position: relative;
-    /* bigger touch target without bigger visual */
     box-shadow: 0 0 0 10px transparent;
   }
 
@@ -114,7 +139,6 @@
 
   li.done .text { color: var(--ink-faded); }
 
-  /* hand-drawn strike: slightly tilted line */
   li.done .text::after {
     content: '';
     position: absolute;
@@ -145,7 +169,6 @@
     padding: 48px 0;
   }
 
-  /* writing line pinned to bottom */
   #writeBar {
     position: fixed;
     left: 0; right: 0; bottom: 0;
@@ -203,8 +226,13 @@
 </head>
 <body>
 
+<div id="tabs">
+  <button class="tab" data-tab="personal">Personal</button>
+  <button class="tab" data-tab="work">Work</button>
+</div>
+
 <header>
-  <h1>To do</h1>
+  <h1 id="title">To do</h1>
   <span id="date"></span>
 </header>
 
@@ -218,27 +246,48 @@
 </div>
 
 <script>
-  const KEY = 'paper-todo-v1';
-  let items = [];
+  const KEY = 'paper-todo-v2';
+  const OLD_KEY = 'paper-todo-v1';
 
-  try { items = JSON.parse(localStorage.getItem(KEY)) || []; } catch (e) { items = []; }
+  let state = { activeTab: 'personal', tabs: { personal: [], work: [] } };
+
+  // load saved data; migrate the old single-list version if it exists
+  try {
+    const saved = JSON.parse(localStorage.getItem(KEY));
+    if (saved && saved.tabs) {
+      state = saved;
+    } else {
+      const old = JSON.parse(localStorage.getItem(OLD_KEY));
+      if (Array.isArray(old)) state.tabs.personal = old;
+    }
+  } catch (e) {}
 
   const list = document.getElementById('list');
   const empty = document.getElementById('empty');
   const input = document.getElementById('newItem');
   const addBtn = document.getElementById('addBtn');
   const clearBtn = document.getElementById('clearDone');
+  const tabButtons = document.querySelectorAll('.tab');
 
   document.getElementById('date').textContent =
     new Date().toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' });
 
   function save() {
-    try { localStorage.setItem(KEY, JSON.stringify(items)); } catch (e) {}
+    try { localStorage.setItem(KEY, JSON.stringify(state)); } catch (e) {}
+  }
+
+  function items() {
+    return state.tabs[state.activeTab];
   }
 
   function render() {
+    // tab highlighting
+    tabButtons.forEach(btn => {
+      btn.classList.toggle('active', btn.dataset.tab === state.activeTab);
+    });
+
     list.innerHTML = '';
-    items.forEach((item, i) => {
+    items().forEach((item, i) => {
       const li = document.createElement('li');
       if (item.done) li.classList.add('done');
 
@@ -260,7 +309,7 @@
       del.textContent = '×';
       del.setAttribute('aria-label', 'Delete item');
       del.addEventListener('click', () => {
-        items.splice(i, 1);
+        items().splice(i, 1);
         save();
         render();
       });
@@ -269,23 +318,31 @@
       list.appendChild(li);
     });
 
-    empty.style.display = items.length ? 'none' : 'block';
-    clearBtn.style.display = items.some(it => it.done) ? 'block' : 'none';
+    empty.style.display = items().length ? 'none' : 'block';
+    clearBtn.style.display = items().some(it => it.done) ? 'block' : 'none';
   }
 
   function addItem() {
     const text = input.value.trim();
     if (!text) return;
-    items.push({ text, done: false });
+    items().push({ text, done: false });
     input.value = '';
     save();
     render();
   }
 
+  tabButtons.forEach(btn => {
+    btn.addEventListener('click', () => {
+      state.activeTab = btn.dataset.tab;
+      save();
+      render();
+    });
+  });
+
   addBtn.addEventListener('click', addItem);
   input.addEventListener('keydown', e => { if (e.key === 'Enter') addItem(); });
   clearBtn.addEventListener('click', () => {
-    items = items.filter(it => !it.done);
+    state.tabs[state.activeTab] = items().filter(it => !it.done);
     save();
     render();
   });
